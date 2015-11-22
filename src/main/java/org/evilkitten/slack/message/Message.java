@@ -1,4 +1,4 @@
-package org.evilkitten.slack.entity;
+package org.evilkitten.slack.message;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;

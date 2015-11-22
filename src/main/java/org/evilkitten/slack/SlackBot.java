@@ -1,5 +1,6 @@
 package org.evilkitten.slack;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.lang3.StringUtils;
@@ -13,20 +14,24 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
-import org.evilkitten.slack.entity.Message;
-import org.evilkitten.slack.entity.Response;
+import org.evilkitten.slack.client.DefaultRtmWebSocketClient;
+import org.evilkitten.slack.client.RtmWebSocketClient;
+import org.evilkitten.slack.handler.RtmHandler;
+import org.evilkitten.slack.message.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.websocket.*;
+import javax.websocket.ContainerProvider;
+import javax.websocket.DeploymentException;
+import javax.websocket.Session;
+import javax.websocket.WebSocketContainer;
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class SlackBot {
+public class SlackBot implements Closeable {
   private final static String API_PROTOCOL = "https";
   private final static String API_HOST = "api.slack.com";
   private final static String API_PATH = "/api/";
@@ -45,6 +50,7 @@ public class SlackBot {
 
   private final static Logger LOGGER = LoggerFactory.getLogger(SlackBot.class);
 
+  private final List<RtmHandler> handlers = new ArrayList<>();
   private final String token;
   private final boolean autoReconnect;
   private final boolean autoMark;
@@ -53,11 +59,12 @@ public class SlackBot {
   private final String agentName;
 
   private Session webSocketSession;
+  private RtmWebSocketClient rtmWebSocketClient;
 
   private PingTimerTask pingTimerTask;
   private Timer pingTimer;
 
-  private SlackBot(String token, boolean autoReconnect, boolean autoMark, ObjectMapper objectMapper, long pingInterval, String agentName) {
+  private SlackBot(String token, boolean autoReconnect, boolean autoMark, ObjectMapper objectMapper, long pingInterval, String agentName, List<RtmHandler> handlers) {
     this.pingInterval = pingInterval;
     this.agentName = agentName;
     this.token = Objects.requireNonNull(token, "API token must be defined");
@@ -65,6 +72,8 @@ public class SlackBot {
     this.autoMark = autoMark;
     this.objectMapper = Objects.requireNonNull(objectMapper, "A Jackson ObjectMapper must be provided")
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    this.handlers.addAll(handlers);
+    this.rtmWebSocketClient = new DefaultRtmWebSocketClient(objectMapper, handlers);
   }
 
   private HttpEntity stringifyParameters(Map<String, String> parameters) throws UnsupportedEncodingException {
@@ -105,11 +114,27 @@ public class SlackBot {
     }
   }
 
-  public void start() throws NoSuchAlgorithmException, KeyManagementException {
+  public void send(Object object) {
+    try {
+      send(objectMapper.writeValueAsString(object));
+    } catch (JsonProcessingException e) {
+      throw new SlackException(e);
+    }
+  }
+
+  public void send(String text) {
+    try {
+      this.webSocketSession.getBasicRemote().sendText(text);
+    } catch (IOException e) {
+      throw new SlackException(e);
+    }
+  }
+
+  public void connect() {
     Response response = api("rtm.start", new HashMap<>());
     WebSocketContainer webSocketContainer = ContainerProvider.getWebSocketContainer();
     try {
-      webSocketSession = webSocketContainer.connectToServer(new RtmClient(), response.getUrl());
+      webSocketSession = webSocketContainer.connectToServer(rtmWebSocketClient, response.getUrl());
       if (pingInterval > 0L) {
         pingTimerTask = new PingTimerTask();
         pingTimer = new Timer(true);
@@ -120,11 +145,33 @@ public class SlackBot {
     }
   }
 
+  public void disconnect() {
+    try {
+      webSocketSession.close();
+      if (pingTimer != null) {
+        pingTimer.cancel();
+        pingTimer = null;
+      }
+    } catch (IOException e) {
+      throw new SlackException(e);
+    }
+  }
+
+  public boolean isConnected() {
+    return webSocketSession.isOpen();
+  }
+
+  @Override
+  public void close() throws IOException {
+    disconnect();
+  }
+
   public static class Builder {
     private String token = "";
     private boolean autoReconnect = false;
     private boolean autoMark = false;
     private ObjectMapper objectMapper = new ObjectMapper();
+    private List<RtmHandler> handlers = new ArrayList<>();
 
     public Builder(String token) {
       this.token = Objects.requireNonNull(token, "API token must be set");
@@ -139,8 +186,6 @@ public class SlackBot {
       this.autoMark = autoMark;
       return this;
     }
-
-    private long pingInterval = DEFAULT_PING_INTERVAL;
 
     public Builder setObjectMapper(ObjectMapper objectMapper) {
       this.objectMapper = objectMapper;
@@ -157,60 +202,35 @@ public class SlackBot {
       return this;
     }
 
-    private String agentName = DEFAULT_AGENT_NAME;
+    public Builder addHandler(RtmHandler handler) {
+      this.handlers.add(handler);
+      return this;
+    }
 
     public SlackBot build() {
       if (StringUtils.isEmpty(token)) {
         throw new IllegalArgumentException("API token must be set");
       }
-      return new SlackBot(token, autoReconnect, autoMark, objectMapper, pingInterval, agentName);
+      return new SlackBot(token, autoReconnect, autoMark, objectMapper, pingInterval, agentName, handlers);
     }
+
+    private String agentName = DEFAULT_AGENT_NAME;
+
+
+    private long pingInterval = DEFAULT_PING_INTERVAL;
 
 
   }
 
   private class PingTimerTask extends TimerTask {
-    long pingCount = 0;
-
     @Override
     public void run() {
       try {
-        LOGGER.debug("Sending ping {}", ++pingCount);
         webSocketSession.getBasicRemote().sendText(DEFAULT_PING_MESSAGE);
       } catch (IOException e) {
         LOGGER.warn("Unable to send ping", e);
         pingTimer.cancel();
       }
-    }
-  }
-
-  @ClientEndpoint
-  public class RtmClient {
-
-    @OnOpen
-    public void onOpen(Session session, EndpointConfig endpointConfig) {
-      LOGGER.trace("RtmClient session opened");
-    }
-
-    @OnClose
-    public void onClose(Session session, CloseReason reason) {
-      LOGGER.trace("RtmClient session closed because {}", reason.getReasonPhrase());
-    }
-
-    @OnMessage
-    public void onMessage(String message) {
-      LOGGER.info("Message: {}", message);
-
-      try {
-        Message messageObject = objectMapper.readValue(message, Message.class);
-      } catch (IOException e) {
-        LOGGER.error(e.getMessage(), e);
-      }
-    }
-
-    @OnError
-    public void onError(Session session, Throwable t) {
-      LOGGER.error(t.getMessage(), t);
     }
   }
 }

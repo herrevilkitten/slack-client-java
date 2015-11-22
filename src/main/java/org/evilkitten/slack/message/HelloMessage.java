@@ -1,4 +1,4 @@
-package org.evilkitten.slack.entity;
+package org.evilkitten.slack.message;
 
 public class HelloMessage extends Message {
 }
