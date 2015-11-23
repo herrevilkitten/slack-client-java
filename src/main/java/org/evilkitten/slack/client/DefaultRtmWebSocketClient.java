@@ -1,6 +1,7 @@
 package org.evilkitten.slack.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import net.jodah.typetools.TypeResolver;
 import org.evilkitten.slack.handler.*;
 import org.evilkitten.slack.message.Message;
 import org.slf4j.Logger;
@@ -33,7 +34,7 @@ public class DefaultRtmWebSocketClient implements RtmWebSocketClient {
       }
 
       if (handler instanceof RtmMessageHandler) {
-        messageHandlers.add((RtmMessageHandler) handler);
+        messageHandlers.add((RtmMessageHandler<?>) handler);
       }
 
       if (handler instanceof RtmErrorHandler) {
@@ -59,7 +60,12 @@ public class DefaultRtmWebSocketClient implements RtmWebSocketClient {
     try {
       Message messageObject = objectMapper.readValue(message, Message.class);
       for (RtmMessageHandler handler : messageHandlers) {
-        handler.onMessage(messageObject);
+        Class<?> genericType = TypeResolver.resolveRawArguments(RtmMessageHandler.class, handler.getClass())[0];
+        boolean isInstanceOf = genericType.isInstance(messageObject);
+
+        if (isInstanceOf) {
+          handler.onMessage(messageObject);
+        }
       }
     } catch (IOException e) {
       LOGGER.error(e.getMessage(), e);

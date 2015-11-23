@@ -3,6 +3,7 @@ package org.evilkitten.slack;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import net.jodah.typetools.TypeResolver;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.NameValuePair;
@@ -17,6 +18,7 @@ import org.apache.http.util.EntityUtils;
 import org.evilkitten.slack.client.DefaultRtmWebSocketClient;
 import org.evilkitten.slack.client.RtmWebSocketClient;
 import org.evilkitten.slack.handler.RtmHandler;
+import org.evilkitten.slack.handler.RtmMessageHandler;
 import org.evilkitten.slack.message.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,6 +75,11 @@ public class SlackBot implements Closeable {
     this.objectMapper = Objects.requireNonNull(objectMapper, "A Jackson ObjectMapper must be provided")
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     this.handlers.addAll(handlers);
+    for (RtmHandler handler : handlers) {
+
+      Class<?>[] typeArgs = TypeResolver.resolveRawArguments(RtmMessageHandler.class, handler.getClass());
+      System.err.println(typeArgs[0].toString());
+    }
     this.rtmWebSocketClient = new DefaultRtmWebSocketClient(objectMapper, handlers);
   }
 
@@ -204,6 +211,8 @@ public class SlackBot implements Closeable {
 
     public Builder addHandler(RtmHandler handler) {
       this.handlers.add(handler);
+      Class<?>[] typeArgs = TypeResolver.resolveRawArguments(RtmMessageHandler.class, handler.getClass());
+      System.err.println(typeArgs[0].toString());
       return this;
     }
 
