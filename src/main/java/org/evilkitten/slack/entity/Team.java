@@ -1,11 +1,8 @@
-package org.evilkitten.slack.message;
+package org.evilkitten.slack.entity;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
-/**
- * Created by Eric Kidder on 11/21/2015.
- */
 @Data
 public class Team {
     private String id;

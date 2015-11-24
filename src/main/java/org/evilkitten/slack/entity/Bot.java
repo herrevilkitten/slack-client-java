@@ -1,4 +1,4 @@
-package org.evilkitten.slack.message;
+package org.evilkitten.slack.entity;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;

@@ -1,6 +1,9 @@
 package org.evilkitten.slack.message;
 
 import lombok.Data;
+import org.evilkitten.slack.entity.Bot;
+import org.evilkitten.slack.entity.Self;
+import org.evilkitten.slack.entity.Team;
 
 import java.net.URI;
 import java.util.ArrayList;

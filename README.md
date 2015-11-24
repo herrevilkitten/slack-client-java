@@ -3,6 +3,14 @@
 
 WORK IN PROGRESS
 
-    // Build a bot with the default options
-    SlackBot bot = new SlackBot.Builder("API TOKEN").build();
-    
+### Example
+
+    // Build a bot with the default options, listen for text messages
+    SlackBot bot = new SlackBot.Builder("API TOKEN")
+      .addHandler((RtmMessageHandler<TextMessage>) message -> System.err.println("Message: " + message.getText()))
+      .build();
+
+    // Connect to Slack -- the bot will run in its own thread
+    bot.connect();
+
+### Usage
