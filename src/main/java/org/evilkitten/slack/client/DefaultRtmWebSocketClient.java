@@ -2,13 +2,14 @@ package org.evilkitten.slack.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import net.jodah.typetools.TypeResolver;
+import org.evilkitten.slack.SlackBot;
 import org.evilkitten.slack.handler.*;
-import org.evilkitten.slack.message.Message;
+import org.evilkitten.slack.response.PostProcessing;
+import org.evilkitten.slack.response.rtm.RtmEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.websocket.*;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -16,30 +17,39 @@ import java.util.List;
 public class DefaultRtmWebSocketClient implements RtmWebSocketClient {
   private final static Logger LOGGER = LoggerFactory.getLogger(DefaultRtmWebSocketClient.class);
 
+  private final SlackBot slackBot;
   private final ObjectMapper objectMapper;
+
   private final List<RtmOpenHandler> openHandlers = new ArrayList<>();
   private final List<RtmCloseHandler> closeHandlers = new ArrayList<>();
-  private final List<RtmMessageHandler> messageHandlers = new ArrayList<>();
+  private final List<RtmMessageHandler<?>> messageHandlers = new ArrayList<>();
   private final List<RtmErrorHandler> errorHandlers = new ArrayList<>();
 
-  public DefaultRtmWebSocketClient(ObjectMapper objectMapper, List<RtmHandler> handlers) {
+  public DefaultRtmWebSocketClient(ObjectMapper objectMapper, SlackBot slackBot) {
     this.objectMapper = objectMapper;
-    for (RtmHandler handler : handlers) {
-      if (handler instanceof RtmOpenHandler) {
-        openHandlers.add((RtmOpenHandler) handler);
-      }
+    this.slackBot = slackBot;
+  }
+/*
+  public void addHandler(RtmMessageHandler<?> handler) {
+    messageHandlers.add(handler);
 
-      if (handler instanceof RtmCloseHandler) {
-        closeHandlers.add((RtmCloseHandler) handler);
-      }
+  }
+*/
+    public void addHandler(RtmHandler handler) {
+    if (handler instanceof RtmOpenHandler) {
+      openHandlers.add((RtmOpenHandler) handler);
+    }
 
-      if (handler instanceof RtmMessageHandler) {
-        messageHandlers.add((RtmMessageHandler<?>) handler);
-      }
+    if (handler instanceof RtmCloseHandler) {
+      closeHandlers.add((RtmCloseHandler) handler);
+    }
 
-      if (handler instanceof RtmErrorHandler) {
-        errorHandlers.add((RtmErrorHandler) handler);
-      }
+    if (handler instanceof RtmMessageHandler) {
+      messageHandlers.add((RtmMessageHandler<?>) handler);
+    }
+
+    if (handler instanceof RtmErrorHandler) {
+      errorHandlers.add((RtmErrorHandler) handler);
     }
   }
 
@@ -58,16 +68,22 @@ public class DefaultRtmWebSocketClient implements RtmWebSocketClient {
     LOGGER.info("Message: {}", message);
 
     try {
-      Message messageObject = objectMapper.readValue(message, Message.class);
+      RtmEvent messageObject = objectMapper.readValue(message, RtmEvent.class);
+      LOGGER.info("Object:  {}", messageObject);
+      if (messageObject instanceof PostProcessing) {
+        ((PostProcessing) messageObject).postProcess(slackBot);
+      }
+
       for (RtmMessageHandler handler : messageHandlers) {
         Class<?> genericType = TypeResolver.resolveRawArguments(RtmMessageHandler.class, handler.getClass())[0];
         boolean isInstanceOf = genericType.isInstance(messageObject);
 
+        LOGGER.info("Handler: {} {}", genericType.getTypeName(), isInstanceOf);
         if (isInstanceOf) {
           handler.onMessage(messageObject);
         }
       }
-    } catch (IOException e) {
+    } catch (Exception e) {
       LOGGER.error(e.getMessage(), e);
     }
   }

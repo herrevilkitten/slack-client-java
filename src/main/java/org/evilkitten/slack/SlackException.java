@@ -1,8 +1,5 @@
 package org.evilkitten.slack;
 
-/**
- * Created by ejkid_000 on 11/20/2015.
- */
 public class SlackException extends RuntimeException {
     public SlackException() {
     }

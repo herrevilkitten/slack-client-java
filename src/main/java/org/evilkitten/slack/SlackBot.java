@@ -3,6 +3,10 @@ package org.evilkitten.slack;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.AccessLevel;
+import lombok.Data;
+import lombok.Setter;
+import lombok.Singular;
 import net.jodah.typetools.TypeResolver;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpEntity;
@@ -17,9 +21,13 @@ import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
 import org.evilkitten.slack.client.DefaultRtmWebSocketClient;
 import org.evilkitten.slack.client.RtmWebSocketClient;
+import org.evilkitten.slack.entity.*;
 import org.evilkitten.slack.handler.RtmHandler;
 import org.evilkitten.slack.handler.RtmMessageHandler;
-import org.evilkitten.slack.message.Response;
+import org.evilkitten.slack.response.PostProcessing;
+import org.evilkitten.slack.response.Response;
+import org.evilkitten.slack.response.api.RtmStartResponse;
+import org.evilkitten.slack.response.rtm.RtmEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,6 +41,7 @@ import java.io.UnsupportedEncodingException;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Data
 public class SlackBot implements Closeable {
   private final static String API_PROTOCOL = "https";
   private final static String API_HOST = "api.slack.com";
@@ -54,33 +63,47 @@ public class SlackBot implements Closeable {
 
   private final List<RtmHandler> handlers = new ArrayList<>();
   private final String token;
-  private final boolean autoReconnect;
-  private final boolean autoMark;
   private final ObjectMapper objectMapper;
   private final long pingInterval;
   private final String agentName;
 
+  @Singular
+  private final Map<String, User> users = new HashMap<>();
+
+  @Singular
+  private final Map<String, Channel> channels = new HashMap<>();
+  // private final Map<String, Group> groups = new HashMap<>();
+  // private final Map<String, Im> ims = new HashMap<>();
+  // Subteams
+
+  @Singular
+  private final Map<String, Bot> bots = new HashMap<>();
+
+  @Setter(AccessLevel.NONE)
   private Session webSocketSession;
+
+  @Setter(AccessLevel.NONE)
   private RtmWebSocketClient rtmWebSocketClient;
 
+  @Setter(AccessLevel.NONE)
+  private RtmStartResponse rtmRtmStartResponse;
+
+  @Setter(AccessLevel.NONE)
   private PingTimerTask pingTimerTask;
+
+  @Setter(AccessLevel.NONE)
   private Timer pingTimer;
 
-  private SlackBot(String token, boolean autoReconnect, boolean autoMark, ObjectMapper objectMapper, long pingInterval, String agentName, List<RtmHandler> handlers) {
+  @Setter(AccessLevel.NONE)
+  private long currentEventId = 0;
+
+  private SlackBot(String token, ObjectMapper objectMapper, long pingInterval, String agentName) {
     this.pingInterval = pingInterval;
     this.agentName = agentName;
     this.token = Objects.requireNonNull(token, "API token must be defined");
-    this.autoReconnect = autoReconnect;
-    this.autoMark = autoMark;
     this.objectMapper = Objects.requireNonNull(objectMapper, "A Jackson ObjectMapper must be provided")
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-    this.handlers.addAll(handlers);
-    for (RtmHandler handler : handlers) {
-
-      Class<?>[] typeArgs = TypeResolver.resolveRawArguments(RtmMessageHandler.class, handler.getClass());
-      System.err.println(typeArgs[0].toString());
-    }
-    this.rtmWebSocketClient = new DefaultRtmWebSocketClient(objectMapper, handlers);
+    this.rtmWebSocketClient = new DefaultRtmWebSocketClient(objectMapper, this);
   }
 
   private HttpEntity stringifyParameters(Map<String, String> parameters) throws UnsupportedEncodingException {
@@ -88,7 +111,7 @@ public class SlackBot implements Closeable {
     return new UrlEncodedFormEntity(entries);
   }
 
-  private Response api(String method, Map<String, String> parameters) {
+  private ApiResponse api(String method, Map<String, String> parameters, Class<? extends Response> responseClass) {
     if (parameters == null) {
       parameters = new HashMap<>();
     }
@@ -105,18 +128,28 @@ public class SlackBot implements Closeable {
       CloseableHttpResponse httpResponse = httpClient.execute(httpPost);
       StatusLine statusLine = httpResponse.getStatusLine();
       HttpEntity entity = httpResponse.getEntity();
-      String response = EntityUtils.toString(entity);
+      String responseText = EntityUtils.toString(entity);
+
       LOGGER.debug("Received status code {}", statusLine);
-      LOGGER.debug("Received response: {}", response);
-      Response success = objectMapper.readValue(response, Response.class);
-      LOGGER.debug("json {}", objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(success));
-      if (!success.isOk()) {
-        throw new SlackException(success.getError());
+      LOGGER.debug("Received response: {}", responseText);
+
+      Response responseObject = objectMapper.readValue(responseText, responseClass);
+      if (responseObject instanceof PostProcessing) {
+        ((PostProcessing) responseObject).postProcess(this);
       }
 
-      return success;
+      return new ApiResponse(statusLine.getStatusCode(), statusLine.getReasonPhrase(), responseText, responseObject);
     } catch (IOException e) {
       LOGGER.error(e.toString(), e);
+      throw new SlackException(e);
+    }
+  }
+
+  synchronized public void send(RtmEvent event) {
+    try {
+      event.setId(currentEventId++);
+      send(objectMapper.writeValueAsString(event));
+    } catch (JsonProcessingException e) {
       throw new SlackException(e);
     }
   }
@@ -129,7 +162,7 @@ public class SlackBot implements Closeable {
     }
   }
 
-  public void send(String text) {
+  synchronized public void send(String text) {
     try {
       this.webSocketSession.getBasicRemote().sendText(text);
     } catch (IOException e) {
@@ -138,17 +171,24 @@ public class SlackBot implements Closeable {
   }
 
   public void connect() {
-    Response response = api("rtm.start", new HashMap<>());
-    WebSocketContainer webSocketContainer = ContainerProvider.getWebSocketContainer();
     try {
-      webSocketSession = webSocketContainer.connectToServer(rtmWebSocketClient, response.getUrl());
+      ApiResponse apiResponse = api("rtm.start", new HashMap<>(), RtmStartResponse.class);
+      rtmRtmStartResponse = (RtmStartResponse) apiResponse.getResponseObject();
+      LOGGER.debug("json {}", objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(rtmRtmStartResponse));
+      if (!rtmRtmStartResponse.isOk()) {
+        throw new SlackException(rtmRtmStartResponse.getError());
+      }
+
+      WebSocketContainer webSocketContainer = ContainerProvider.getWebSocketContainer();
+      webSocketSession = webSocketContainer.connectToServer(rtmWebSocketClient, rtmRtmStartResponse.getUrl());
+
       if (pingInterval > 0L) {
         pingTimerTask = new PingTimerTask();
         pingTimer = new Timer(true);
         pingTimer.scheduleAtFixedRate(pingTimerTask, 0, pingInterval);
       }
     } catch (DeploymentException | IOException e) {
-      e.printStackTrace();
+      throw new SlackException(e);
     }
   }
 
@@ -165,33 +205,64 @@ public class SlackBot implements Closeable {
   }
 
   public boolean isConnected() {
-    return webSocketSession.isOpen();
+    return webSocketSession != null && webSocketSession.isOpen();
+  }
+
+  public Self getSelf() {
+    if (rtmRtmStartResponse != null) {
+      return rtmRtmStartResponse.getSelf();
+    }
+    return null;
+  }
+
+  public Team getTeam() {
+    if (rtmRtmStartResponse != null) {
+      return rtmRtmStartResponse.getTeam();
+    }
+    return null;
+  }
+
+  public Channel getChannel(String channelId) {
+    if (!channels.containsKey(channelId)) {
+      channels.put(channelId, new Channel());
+    }
+    return channels.get(channelId);
+  }
+
+  public User getUser(String userId) {
+    if (!users.containsKey(userId)) {
+      users.put(userId, new User());
+    }
+    return users.get(userId);
   }
 
   @Override
   public void close() throws IOException {
     disconnect();
   }
+/*
+  public void addHandler(RtmMessageHandler<?> handler) {
+    this.handlers.add(handler);
+    if (rtmWebSocketClient instanceof DefaultRtmWebSocketClient) {
+      ((DefaultRtmWebSocketClient) rtmWebSocketClient).addHandler(handler);
+    }
+    return this;
+  }
+*/
+  public SlackBot addHandler(RtmHandler handler) {
+    this.handlers.add(handler);
+    if (rtmWebSocketClient instanceof DefaultRtmWebSocketClient) {
+      ((DefaultRtmWebSocketClient) rtmWebSocketClient).addHandler(handler);
+    }
+    return this;
+  }
 
   public static class Builder {
     private String token = "";
-    private boolean autoReconnect = false;
-    private boolean autoMark = false;
     private ObjectMapper objectMapper = new ObjectMapper();
-    private List<RtmHandler> handlers = new ArrayList<>();
 
     public Builder(String token) {
       this.token = Objects.requireNonNull(token, "API token must be set");
-    }
-
-    public Builder setAutoReconnect(boolean autoReconnect) {
-      this.autoReconnect = autoReconnect;
-      return this;
-    }
-
-    public Builder setAutoMark(boolean autoMark) {
-      this.autoMark = autoMark;
-      return this;
     }
 
     public Builder setObjectMapper(ObjectMapper objectMapper) {
@@ -209,26 +280,32 @@ public class SlackBot implements Closeable {
       return this;
     }
 
-    public Builder addHandler(RtmHandler handler) {
-      this.handlers.add(handler);
-      Class<?>[] typeArgs = TypeResolver.resolveRawArguments(RtmMessageHandler.class, handler.getClass());
-      System.err.println(typeArgs[0].toString());
-      return this;
-    }
-
     public SlackBot build() {
       if (StringUtils.isEmpty(token)) {
         throw new IllegalArgumentException("API token must be set");
       }
-      return new SlackBot(token, autoReconnect, autoMark, objectMapper, pingInterval, agentName, handlers);
+      return new SlackBot(token, objectMapper, pingInterval, agentName);
     }
 
     private String agentName = DEFAULT_AGENT_NAME;
 
 
     private long pingInterval = DEFAULT_PING_INTERVAL;
+  }
 
+  @Data
+  public class ApiResponse {
+    private int statusCode;
+    private String statusLine;
+    private String responseText;
+    private Response responseObject;
 
+    public ApiResponse(int statusCode, String statusLine, String responseText, Response responseObject) {
+      this.statusCode = statusCode;
+      this.statusLine = statusLine;
+      this.responseText = responseText;
+      this.responseObject = responseObject;
+    }
   }
 
   private class PingTimerTask extends TimerTask {

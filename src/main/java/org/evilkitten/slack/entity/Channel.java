@@ -1,19 +1,21 @@
 package org.evilkitten.slack.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
+import org.evilkitten.slack.Bottable;
 import org.evilkitten.slack.SlackBot;
+import org.evilkitten.slack.request.chat.PostMessage;
+import org.evilkitten.slack.response.rtm.MessageEvent;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @Data
-public class Channel {
-  private final SlackBot slackBot;
-
-  public Channel(SlackBot slackBot) {
-    this.slackBot = slackBot;
-  }
+public class Channel implements Bottable {
+  @JsonIgnore
+  private SlackBot slackBot;
 
   private String id;
   private String name;
@@ -21,7 +23,6 @@ public class Channel {
 
   @JsonProperty("creator")
   private String creatorId;
-  private User creator;
 
   @JsonProperty("is_archived")
   private boolean archived;
@@ -31,8 +32,8 @@ public class Channel {
 
   private List<String> members = new ArrayList<>();
 
-  private Topic topic;
-  private Topic purpose;
+  private Value topic;
+  private Value purpose;
 
   @JsonProperty("is_member")
   private boolean member;
@@ -46,19 +47,27 @@ public class Channel {
   @JsonProperty("unread_count_display")
   private int unreadCountDisplay;
 
+  public void send(MessageEvent messageEvent) {
+    Objects.requireNonNull(slackBot);
+    slackBot.send(messageEvent);
+  }
+
+  public void send(String text) {
+    MessageEvent messageEvent = new MessageEvent();
+    messageEvent.setChannelId(id);
+    messageEvent.setType("message");
+    messageEvent.setText(text);
+    send(messageEvent);
+  }
+
   @Data
-  public class Topic {
+  public class Value {
     private String value;
 
     @JsonProperty("creator")
     private String creatorId;
 
-    private User creator;
-
     @JsonProperty("last_set")
     private long lastSet;
-  }
-
-  public void postMessage(String text) {
   }
 }

@@ -1,10 +1,10 @@
-package org.evilkitten.slack.message;
+package org.evilkitten.slack.response.rtm;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import lombok.Data;
-import org.evilkitten.slack.message.text.BotTextMessage;
+import org.evilkitten.slack.response.rtm.text.BotMessageEvent;
 
 import java.util.List;
 
@@ -12,10 +12,10 @@ import java.util.List;
     include = JsonTypeInfo.As.PROPERTY,
     property = "subtype")
 @JsonSubTypes({
-    @JsonSubTypes.Type(value = BotTextMessage.class, name = "bot_message")
+    @JsonSubTypes.Type(value = BotMessageEvent.class, name = "bot_message")
 })
 @Data
-public class TextMessage extends Message {
+public class MessageEvent extends RtmEvent {
   @JsonProperty("channel")
   private String channelId;
 

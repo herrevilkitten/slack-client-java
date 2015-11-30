@@ -1,10 +1,10 @@
-package org.evilkitten.slack.message;
+package org.evilkitten.slack.response.rtm;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 @Data
-public class UserTypingMessage extends Message {
+public class UserTypingEvent extends RtmEvent {
   @JsonProperty("channel")
   public String channelId;
 

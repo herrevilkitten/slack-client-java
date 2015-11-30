@@ -1,10 +1,10 @@
 package org.evilkitten.slack.handler;
 
 import lombok.Data;
-import org.evilkitten.slack.message.Message;
+import org.evilkitten.slack.response.rtm.RtmEvent;
 
 @Data
-public class RtmMessage<T extends Message> {
+public class RtmMessage<T extends RtmEvent> {
   private final String raw;
   private final T message;
   private final long timestamp;

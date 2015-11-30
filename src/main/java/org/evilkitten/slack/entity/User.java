@@ -1,10 +1,16 @@
 package org.evilkitten.slack.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
+import org.evilkitten.slack.Bottable;
+import org.evilkitten.slack.SlackBot;
 
 @Data
-public class User {
+public class User implements Bottable {
+  @JsonIgnore
+  private SlackBot slackBot;
+
   private String id;
   private String name;
   private boolean deleted;

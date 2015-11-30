@@ -1,32 +1,39 @@
 package org.evilkitten.slack.request.chat;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Data;
+import lombok.NonNull;
 import org.evilkitten.slack.entity.Attachment;
 
-import javax.swing.text.html.Option;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
+@Data
 public class PostMessage {
+  @NonNull
   private String token;
+
+  @NonNull
   private String channel;
+
+  @NonNull
   private String text;
 
-  private Optional<String> username = Optional.empty();
+  private String username;
 
   @JsonProperty("as_user")
-  private Optional<Boolean> asUser = Optional.empty();
+  private Boolean asUser;
 
-  private Optional<String> parse;
+  private String parse;
 
   @JsonProperty("link_names")
-  private Optional<Integer> linkNames;
+  private Integer linkNames;
 
-  private Optional<List<Attachment>> attachments;
+  private List<Attachment> attachments = new ArrayList<>();
 
   @JsonProperty("unfurl_links")
-  private Optional<Boolean> unfurlLinks;
+  private Boolean unfurlLinks;
 
   @JsonProperty("unfurl_media")
-  private Optional<Boolean> unfurlMedia;
+  private Boolean unfurlMedia;
 }
