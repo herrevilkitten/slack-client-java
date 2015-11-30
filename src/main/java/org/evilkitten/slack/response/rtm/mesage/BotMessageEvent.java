@@ -1,4 +1,4 @@
-package org.evilkitten.slack.response.rtm.text;
+package org.evilkitten.slack.response.rtm.mesage;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
