@@ -16,7 +16,7 @@ import java.util.List;
     @JsonSubTypes.Type(value = BotMessageEvent.class, name = "bot_message"),
     @JsonSubTypes.Type(value = MessageDeletedEvent.class, name = "message_deleted"),
     @JsonSubTypes.Type(value = MessageChangedEvent.class, name = "message_changed"),
-    @JsonSubTypes.Type(value = ChannelJoinMessageEvent.class, name = "channel_join"),
+    @JsonSubTypes.Type(value = ChannelJoinEvent.class, name = "channel_join"),
     @JsonSubTypes.Type(value = MeMessageEvent.class, name = "me_message")
 })
 @Data

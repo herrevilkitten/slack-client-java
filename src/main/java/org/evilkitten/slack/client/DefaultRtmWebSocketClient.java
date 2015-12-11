@@ -69,6 +69,7 @@ public class DefaultRtmWebSocketClient implements RtmWebSocketClient {
 
     try {
       RtmEvent messageObject = objectMapper.readValue(message, RtmEvent.class);
+      messageObject.setRawResponse(message);
       LOGGER.info("Object:  {}", messageObject);
       if (messageObject instanceof PostProcessing) {
         ((PostProcessing) messageObject).postProcess(slackBot);

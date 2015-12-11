@@ -14,6 +14,18 @@
         <url>http://www.evilkitten.org/</url>
     </organization>
 
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <scm>
+        <url>https://github.com/herrevilkitten/slack-java-rtm.git</url>
+    </scm>
+
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
@@ -29,7 +41,9 @@
         <testng.version>6.9.9</testng.version>
         <mockito.version>1.10.19</mockito.version>
         <httpclient.version>4.5.1</httpclient.version>
-        <websocket.version>1.3.0</websocket.version>
+        <tyrus.version>1.12</tyrus.version>
+        <tika.version>1.11</tika.version>
+        <typetools.version>0.4.4</typetools.version>
     </properties>
 
     <build>
@@ -58,13 +72,20 @@
         <dependency>
             <groupId>org.glassfish.tyrus.bundles</groupId>
             <artifactId>tyrus-standalone-client-jdk</artifactId>
-            <version>1.12</version>
+            <version>${tyrus.version}</version>
         </dependency>
 
         <dependency>
             <groupId>net.jodah</groupId>
             <artifactId>typetools</artifactId>
-            <version>0.4.4</version>
+            <version>${typetools.version}</version>
+        </dependency>
+
+        <!-- Content Detection -->
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-core</artifactId>
+            <version>${tika.version}</version>
         </dependency>
 
         <!-- Test -->

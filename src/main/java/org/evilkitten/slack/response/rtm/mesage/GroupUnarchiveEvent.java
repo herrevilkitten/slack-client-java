@@ -4,5 +4,5 @@ import lombok.Data;
 import org.evilkitten.slack.response.rtm.MessageEvent;
 
 @Data
-public class ChannelJoinMessageEvent extends MessageEvent {
+public class GroupUnarchiveEvent extends MessageEvent {
 }
