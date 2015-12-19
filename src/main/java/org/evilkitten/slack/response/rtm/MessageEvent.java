@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import lombok.Data;
 import org.evilkitten.slack.response.rtm.mesage.*;
+import org.evilkitten.slack.response.rtm.mesage.channel.ChannelJoinEvent;
 
 import java.util.List;
 
@@ -46,6 +47,8 @@ public class MessageEvent extends RtmEvent {
   private List<Reaction> reactions;
 
   private EditInfo edited;
+
+  private boolean hidden;
 
   @Data
   public class EditInfo {
